@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=编译 Unitree 部署工程
+Comment=编译 unitree_sdk2、g1_ctrl 和 MuJoCo 仿真器
+Exec="/home/newname/文档/Trae-CN/temp_20261022_01/robot_rl/unitree_rl_mjlab/scripts/build_all_click.sh"
+Path=/home/newname/文档/Trae-CN/temp_20261022_01/robot_rl/unitree_rl_mjlab
+Icon=utilities-terminal
+Terminal=true
+Categories=Development;
+StartupNotify=true

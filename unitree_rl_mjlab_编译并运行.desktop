@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=编译并运行 unitree_rl_mjlab (G1)
+Comment=mjlab 工程：编译 g1_ctrl 和内置 MuJoCo 仿真器，然后启动仿真闭环
+Exec="/home/newname/文档/Trae-CN/temp_20261022_01/robot_rl/unitree_rl_mjlab/scripts/run_mjlab_click.sh"
+Path=/home/newname/文档/Trae-CN/temp_20261022_01/robot_rl/unitree_rl_mjlab
+Icon=applications-engineering
+Terminal=true
+Categories=Development;
+StartupNotify=true
