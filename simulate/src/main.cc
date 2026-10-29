@@ -620,6 +620,16 @@ __attribute__((used, visibility("default"))) extern "C" void _mj_rosettaError(co
 
 // user keyboard callback
 void user_key_cb(GLFWwindow* window, int key, int scancode, int act, int mods) {
+  // 键盘手柄：只记录按下/松开，忽略重复触发
+  if (param::config.use_joystick == 1 && param::config.joystick_type == "keyboard")
+  {
+    if (act == GLFW_PRESS) {
+      KeyboardJoystick::setKeyState(key, true);
+    } else if (act == GLFW_RELEASE) {
+      KeyboardJoystick::setKeyState(key, false);
+    }
+  }
+
   if (act==GLFW_PRESS)
   {
     if(param::config.enable_elastic_band == 1) {
@@ -678,6 +688,15 @@ int main(int argc, char **argv)
     param::config.robot_scene = proj_dir.parent_path() / param::config.robot_scene;
   }
 
+  if(param::config.use_joystick == 1 && param::config.joystick_type == "keyboard") {
+    std::cout << "\nKeyboard joystick enabled. Click the MuJoCo window first.\n"
+              << "  Move : W/S forward/back, A/D left/right, Q/E turn\n"
+              << "  D-pad: arrow keys\n"
+              << "  A/B/X/Y: J/K/U/I   LB/RB: R/T   LT/RT: F/G\n"
+              << "  Hold F then press Up : FixStand; hold G then press J : Velocity\n"
+              << std::endl;
+  }
+
   // simulate object encapsulates the UI
   auto sim = std::make_unique<mj::Simulate>(
     std::make_unique<mj::GlfwAdapter>(),
@@ -689,6 +708,13 @@ int main(int argc, char **argv)
   std::thread physicsthreadhandle(&PhysicsThread, sim.get(), param::config.robot_scene.c_str());
   // start simulation UI loop (blocking call)
   glfwSetKeyCallback(static_cast<mj::GlfwAdapter*>(sim->platform_ui.get())->window_,user_key_cb);
+  glfwSetWindowFocusCallback(
+      static_cast<mj::GlfwAdapter*>(sim->platform_ui.get())->window_,
+      [](GLFWwindow*, int focused) {
+        if (!focused) {
+          KeyboardJoystick::resetKeys();
+        }
+      });
   sim->RenderLoop();
   physicsthreadhandle.join();
 

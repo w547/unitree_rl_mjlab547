@@ -10,6 +10,7 @@
 #include <unitree/idl/hg/IMUState_.hpp>
 
 #include <iostream>
+#include <vector>
 
 #include "param.h"
 #include "physics_joystick.h"
@@ -31,8 +32,11 @@ public:
                 joystick = std::make_shared<XBoxJoystick>(param::config.joystick_device, param::config.joystick_bits);
             } else if(param::config.joystick_type == "switch") {
                 joystick  = std::make_shared<SwitchJoystick>(param::config.joystick_device, param::config.joystick_bits);
+            } else if(param::config.joystick_type == "keyboard") {
+                joystick  = std::make_shared<KeyboardJoystick>();
             } else {
-                std::cerr << "Unsupported joystick type: " << param::config.joystick_type << std::endl;
+                std::cerr << "Unsupported joystick type: " << param::config.joystick_type
+                          << " (supported: xbox, switch, keyboard)" << std::endl;
                 exit(EXIT_FAILURE);
             }
         }
@@ -90,6 +94,13 @@ protected:
 
     std::shared_ptr<unitree::common::UnitreeJoystick> joystick = nullptr;
 
+    // 启动保持：控制器接管前用固定 PD 把机器人稳在出生位姿。
+    // 增益经实测选定：kp=200 时直腿位姿会因重力下沉而失衡，500 可稳定站立并抵抗扰动。
+    static constexpr double kHoldKp = 500.0;
+    static constexpr double kHoldKd = 10.0;
+    bool hold_active_ = true;
+    std::vector<double> hold_q_;
+
     void _check_sensor()
     {
         num_motor_ = mj_model_->nu;
@@ -145,6 +156,15 @@ protected:
         if (sensor_id >= 0) {
             secondary_imu_acc_adr_ = mj_model_->sensor_adr[sensor_id];
         }
+
+        // 启动保持目标：各驱动关节的出生位姿（qpos0）
+        hold_q_.assign(num_motor_, 0.0);
+        for (int i = 0; i < num_motor_; i++) {
+            int jid = mj_model_->actuator_trnid[2 * i];
+            if (mj_model_->actuator_trntype[i] == mjTRN_JOINT && jid >= 0) {
+                hold_q_[i] = mj_model_->qpos0[mj_model_->jnt_qposadr[jid]];
+            }
+        }
     }
 };
 
@@ -178,11 +198,27 @@ public:
         // lowcmd
         {
             std::lock_guard<std::mutex> lock(lowcmd->mutex_);
+            // 控制器尚未接管（lowcmd 全 kp=0）时，用固定 PD 把机器人稳在出生位姿；
+            // 一旦收到任一 kp>0 的指令即永久释放，之后完全由控制器（含 Passive 的瘫软）决定。
+            if(hold_active_) {
+                for(int i(0); i<num_motor_; i++) {
+                    if(lowcmd->msg_.motor_cmd()[i].kp() > 0) {
+                        hold_active_ = false;
+                        std::cout << "[bridge] 检测到控制器接管 (kp>0)，释放启动保持" << std::endl;
+                        break;
+                    }
+                }
+            }
             for(int i(0); i<num_motor_; i++) {
-                auto & m = lowcmd->msg_.motor_cmd()[i];
-                mj_data_->ctrl[i] = m.tau() +
-                                    m.kp() * (m.q() - mj_data_->sensordata[i]) +
-                                    m.kd() * (m.dq() - mj_data_->sensordata[i + num_motor_]);
+                if(hold_active_) {
+                    mj_data_->ctrl[i] = kHoldKp * (hold_q_[i] - mj_data_->sensordata[i]) +
+                                        kHoldKd * (0.0 - mj_data_->sensordata[i + num_motor_]);
+                } else {
+                    auto & m = lowcmd->msg_.motor_cmd()[i];
+                    mj_data_->ctrl[i] = m.tau() +
+                                        m.kp() * (m.q() - mj_data_->sensordata[i]) +
+                                        m.kd() * (m.dq() - mj_data_->sensordata[i + num_motor_]);
+                }
             }
         }
 
